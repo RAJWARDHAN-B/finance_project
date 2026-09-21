@@ -52,17 +52,291 @@ print(prices.head())
 
 The loader validates the required `Open`, `High`, `Low`, `Close`, and `Volume` columns, sorts the timestamps, rejects missing or impossible prices, and optionally saves the cleaned data.
 
-## Learning Milestones
+## Phase-Wise Learning and Implementation Plan
 
-1. Load and validate historical OHLCV data.
-2. Define market, signal, order, and fill events.
-3. Build a portfolio and cash-accounting component.
-4. Implement a moving-average mean-reversion strategy.
-5. Add commissions, slippage, position limits, and trade logs.
-6. Calculate returns, volatility, Sharpe ratio, and maximum drawdown.
-7. Add out-of-sample testing and compare against buy-and-hold.
+The project is intentionally developed in phases. Each phase introduces a small amount of finance and software design, produces a working result, and adds tests before the next layer is started. Do not add machine learning, live trading, or tick data until the simpler daily-data system is trustworthy.
 
-The remaining project ideas below are longer-term options after this foundation is complete.
+### Phase 0: Tools and Python Foundations
+
+**Goal:** Become comfortable running and changing the project.
+
+Learn:
+
+- Python functions, classes, modules, and exceptions
+- Virtual environments and package installation
+- Git basics: commits, branches, and readable project history
+- `pandas` DataFrames, indexes, filtering, and rolling calculations
+- `pytest` tests and the arrange-act-assert pattern
+
+Build:
+
+- Activate `.venv` and run the existing tests.
+- Read the package code and change the CLI message.
+- Create a small DataFrame manually and calculate its percentage changes.
+
+Completion check:
+
+```bash
+python -m pytest
+python -m quant_backtester.cli
+```
+
+### Phase 1: Market Data and OHLCV
+
+**Goal:** Understand what market data represents and make unreliable input safe to use.
+
+Learn:
+
+- Open, High, Low, Close, and Volume
+- Trading days, timestamps, missing values, and duplicate rows
+- Adjusted versus unadjusted prices
+- Why data quality affects every backtest result
+
+Build:
+
+- Keep the `validate_ohlcv` function as the data contract.
+- Add CSV loading and historical downloads.
+- Add tests for missing columns, null values, duplicate timestamps, invalid prices, and negative volume.
+- Download one symbol such as `SPY` and inspect the first and last rows.
+
+Completion check:
+
+- A valid CSV loads into a chronologically sorted DataFrame.
+- Invalid input fails with a clear error.
+- A sample file can be saved under `data/` and is ignored by Git.
+
+### Phase 2: Returns and a Baseline
+
+**Goal:** Learn how investment performance is measured before writing a trading strategy.
+
+Learn:
+
+- Simple return: $r_t = P_t / P_{t-1} - 1$
+- Log return: $\log(P_t / P_{t-1})$
+- Compounding and cumulative returns
+- Buy-and-hold as a baseline
+
+Build:
+
+- Add a returns module that calculates daily and cumulative returns.
+- Create a buy-and-hold result for the downloaded symbol.
+- Plot the price and cumulative return.
+- Test known input values by hand so the formulas are not accepted on intuition alone.
+
+Completion check:
+
+- The cumulative return agrees with the first and last prices.
+- The baseline report states the start date, end date, initial capital, final value, and total return.
+
+### Phase 3: Event-Driven Architecture
+
+**Goal:** Understand how a trading system moves information through components.
+
+Learn:
+
+- Event-driven design and queues
+- The difference between market data, signals, orders, and fills
+- Why a strategy should not directly change cash or positions
+
+Build these small domain objects:
+
+- `MarketEvent`: a new OHLCV bar is available.
+- `SignalEvent`: a strategy wants to increase, reduce, or close exposure.
+- `OrderEvent`: the portfolio requests a quantity and direction.
+- `FillEvent`: the simulated broker confirms an execution price and quantity.
+
+Build a simple event loop:
+
+1. Read one market bar.
+2. Create a market event.
+3. Let the strategy create a signal.
+4. Convert the signal into an order.
+5. Simulate a fill.
+6. Update the portfolio.
+
+Completion check:
+
+- A test processes one bar in the expected event order.
+- Components communicate through events rather than modifying one another's internal state.
+
+### Phase 4: Portfolio, Orders, and Accounting
+
+**Goal:** Make trades affect cash and positions correctly.
+
+Learn:
+
+- Long positions, quantities, notional value, and cash
+- Market orders and execution price
+- Mark-to-market portfolio value
+- Basic accounting invariants
+
+Build:
+
+- A portfolio with initial cash, positions, cash balance, and total equity.
+- Order creation from signals.
+- A basic simulated broker that fills orders at the next bar's open.
+- A trade ledger containing timestamp, symbol, side, quantity, price, and fees.
+
+Test these invariants:
+
+- Buying decreases cash.
+- Selling increases cash.
+- A position quantity changes by the fill quantity.
+- Portfolio equity equals cash plus the market value of positions.
+- A rejected order does not change the portfolio.
+
+Completion check:
+
+- A fixed sequence of bars and orders produces a hand-calculable final cash balance and position.
+
+### Phase 5: First Strategy: Moving-Average Mean Reversion
+
+**Goal:** Implement a simple, explainable strategy without accidentally using future information.
+
+Learn:
+
+- Simple moving averages
+- Rolling windows and warm-up periods
+- Mean reversion versus momentum
+- Look-ahead bias and execution timing
+
+Build:
+
+- Calculate a rolling mean and rolling standard deviation.
+- Generate a buy signal when price is sufficiently below its rolling mean.
+- Generate an exit signal when price returns toward the mean.
+- Start with one symbol and one position at a time.
+- Generate the signal using the current bar but execute on the next bar.
+
+Completion check:
+
+- Signals are absent during the warm-up period.
+- A test proves that changing a future price does not change an earlier signal.
+- The strategy can be run through the event loop without directly changing the portfolio.
+
+### Phase 6: Realistic Backtesting
+
+**Goal:** Make the simulated results less optimistic.
+
+Learn:
+
+- Commission and spread costs
+- Slippage and market impact
+- Position sizing and exposure limits
+- Why frequent trading can destroy a strategy's edge
+
+Build:
+
+- Commission per trade.
+- Slippage in basis points.
+- Maximum position size and available-cash checks.
+- Rejected-order reasons.
+- Complete trade and order logs.
+- Configuration objects so assumptions are visible and reproducible.
+
+Completion check:
+
+- The same strategy produces a lower or equal final value after costs.
+- Tests verify fee calculations, slippage direction, and position limits.
+
+### Phase 7: Performance and Risk Metrics
+
+**Goal:** Evaluate a strategy beyond whether the final balance increased.
+
+Learn:
+
+- Annualized return and volatility
+- Sharpe ratio and its assumptions
+- Maximum drawdown and recovery time
+- Win rate, average win, average loss, and profit factor
+- The difference between return and risk-adjusted return
+
+Build:
+
+- A performance report from the equity curve and trade ledger.
+- Equity curve and drawdown charts in `reports/`.
+- A comparison against buy-and-hold.
+- Tests using small, known equity curves with expected metrics.
+
+Completion check:
+
+- Every report includes the data period, symbol, strategy settings, costs, and metrics.
+- Results can be reproduced from the same input data and configuration.
+
+### Phase 8: Research Discipline and Validation
+
+**Goal:** Learn why a backtest can look impressive and still be wrong.
+
+Learn:
+
+- In-sample versus out-of-sample data
+- Train, validation, and test periods
+- Walk-forward evaluation
+- Parameter overfitting and selection bias
+- Survivorship bias and delisted securities
+
+Build:
+
+- A fixed chronological split into development and evaluation periods.
+- Walk-forward backtesting without shuffling time series data.
+- Parameter sensitivity tables for the moving-average window and entry threshold.
+- A results table showing each run's assumptions.
+
+Completion check:
+
+- The final strategy is evaluated on data that was not used to choose its parameters.
+- The README clearly reports both successful and unsuccessful experiments.
+
+### Phase 9: Multiple Assets and Better Engineering
+
+**Goal:** Extend the system while preserving correctness.
+
+Learn:
+
+- Portfolio diversification and asset allocation
+- Correlation and concentration
+- Configuration-driven applications
+- Logging, type hints, and integration tests
+
+Build:
+
+- Multiple symbols with separate positions.
+- Portfolio-level exposure and risk limits.
+- A command-line command to run a configured backtest.
+- Structured logging and error handling.
+- Fast unit tests plus a small end-to-end test.
+
+Completion check:
+
+- One command creates a complete report from a configuration file.
+- Existing single-asset behavior remains unchanged.
+
+### Phase 10: Optional Advanced Extensions
+
+Only begin these after Phases 0-9 are working and understood.
+
+- Tick data and asynchronous broker APIs
+- Limit order books and market microstructure
+- Options pricing and volatility surfaces
+- Risk metrics such as historical VaR and expected shortfall
+- A web dashboard using Streamlit
+- Machine-learning signals with strict time-series validation
+- A separate C++ execution or limit-order-book project
+
+These are separate learning tracks, not prerequisites for a credible first backtesting project. A reliable, explainable daily-data system is more valuable than a complicated system whose results cannot be trusted.
+
+## Suggested Weekly Rhythm
+
+For each phase:
+
+1. Learn the finance concept in plain language.
+2. Write down a small example with numbers.
+3. Implement the smallest useful function.
+4. Add tests before adding features.
+5. Run one experiment and inspect the output.
+6. Record assumptions, results, and questions in the README or a research note.
+
+Do not move to the next phase merely because the code runs. Move when you can explain the calculation, identify its assumptions, and describe at least one way it could be wrong.
 
 Here is a list of 14 high-impact portfolio projects divided across Quant Finance and Investment Banking.
 Since your background spans AI Agents, Core ML, Computer Vision, and Software Development, these project concepts leverage those exact strengths to make your resume stand out to top-tier finance recruiters.
