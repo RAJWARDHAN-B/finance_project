@@ -32,3 +32,9 @@ Part 2: Investment Banking Projects (Focus: Financial Modeling, AI Automation & 
    * Description: An end-to-end computer vision and OCR pipeline (using tools like Donut or LayoutLM) designed to parse complex scanned financial documents, pitch books, tables, and tax filings, directly extracting key deal risk factors into a structured dashboard.
  * Automated Trading Comparable Analysis ("Comps") Builder
    * Description: A Python web scraper and data modeler that takes a target company, identifies its closest sector competitors, pulls real-time EV/EBITDA, P/E, and EV/Revenue multiples, and automatically builds a relative valuation summary table.
+
+   Build an event-driven backtesting engine in Python or C++.
+
+Write a script that ingests, cleans, and structures live or historical tick data via a broker API.
+
+Implement a simple statistical arbitrage or mean-reversion trading strategy with performance metrics.
