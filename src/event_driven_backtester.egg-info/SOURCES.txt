@@ -1,0 +1,10 @@
+README.md
+pyproject.toml
+src/event_driven_backtester.egg-info/PKG-INFO
+src/event_driven_backtester.egg-info/SOURCES.txt
+src/event_driven_backtester.egg-info/dependency_links.txt
+src/event_driven_backtester.egg-info/requires.txt
+src/event_driven_backtester.egg-info/top_level.txt
+src/quant_backtester/__init__.py
+src/quant_backtester/cli.py
+tests/test_package.py

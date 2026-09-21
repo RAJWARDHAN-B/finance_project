@@ -1,68 +1,17 @@
-# Event-Driven Backtester
+Metadata-Version: 2.4
+Name: event-driven-backtester
+Version: 0.1.0
+Summary: A beginner-friendly event-driven trading backtesting platform.
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: matplotlib<4,>=3.7
+Requires-Dist: numpy<3,>=1.24
+Requires-Dist: pandas<3,>=2.0
+Requires-Dist: yfinance<1,>=0.2
+Provides-Extra: dev
+Requires-Dist: pytest<9,>=7; extra == "dev"
 
-A beginner-friendly Python project for learning quantitative finance through software development.
-
-The first milestone is an event-driven backtesting engine with a simple mean-reversion strategy. We will begin with historical daily data, then add realistic transaction costs, performance metrics, and tests before considering live data.
-
-## Project Layout
-
-```text
-src/quant_backtester/  Application package
-tests/                 Automated tests
-data/                  Local market data (ignored by Git)
-reports/               Generated charts and reports (ignored by Git)
-```
-
-## Setup
-
-Create and activate the virtual environment:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e '.[dev]'
-```
-
-Run the test suite:
-
-```bash
-python -m pytest
-```
-
-Run the placeholder command-line entry point:
-
-```bash
-python -m quant_backtester.cli
-```
-
-Download historical daily data from Yahoo Finance:
-
-```python
-from quant_backtester.data import download_history
-
-prices = download_history(
-  ticker="SPY",
-  start="2020-01-01",
-  end="2024-01-01",
-  output_path="data/SPY.csv",
-)
-print(prices.head())
-```
-
-The loader validates the required `Open`, `High`, `Low`, `Close`, and `Volume` columns, sorts the timestamps, rejects missing or impossible prices, and optionally saves the cleaned data.
-
-## Learning Milestones
-
-1. Load and validate historical OHLCV data.
-2. Define market, signal, order, and fill events.
-3. Build a portfolio and cash-accounting component.
-4. Implement a moving-average mean-reversion strategy.
-5. Add commissions, slippage, position limits, and trade logs.
-6. Calculate returns, volatility, Sharpe ratio, and maximum drawdown.
-7. Add out-of-sample testing and compare against buy-and-hold.
-
-The remaining project ideas below are longer-term options after this foundation is complete.
+# finance_project
 
 Here is a list of 14 high-impact portfolio projects divided across Quant Finance and Investment Banking.
 Since your background spans AI Agents, Core ML, Computer Vision, and Software Development, these project concepts leverage those exact strengths to make your resume stand out to top-tier finance recruiters.
