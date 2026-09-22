@@ -52,6 +52,21 @@ print(prices.head())
 
 The loader validates the required `Open`, `High`, `Low`, `Close`, and `Volume` columns, sorts the timestamps, rejects missing or impossible prices, and optionally saves the cleaned data.
 
+Calculate returns and create a buy-and-hold baseline:
+
+```python
+from quant_backtester.data import load_csv
+from quant_backtester.returns import buy_and_hold
+
+prices = load_csv("data/SPY.csv")
+baseline = buy_and_hold(prices, initial_capital=10000)
+
+print(baseline[["close", "equity"]].tail())
+print("Final portfolio value:", baseline["equity"].iloc[-1])
+```
+
+The baseline assumes that the full investment is made at the first available closing price and held until the final date. It is deliberately simple: it does not model commissions, slippage, taxes, or timing decisions. Future strategies must beat this baseline after those costs, or they do not add value.
+
 ## Phase-Wise Learning and Implementation Plan
 
 The project is intentionally developed in phases. Each phase introduces a small amount of finance and software design, produces a working result, and adds tests before the next layer is started. Do not add machine learning, live trading, or tick data until the simpler daily-data system is trustworthy.
@@ -376,3 +391,5 @@ Part 2: Investment Banking Projects (Focus: Financial Modeling, AI Automation & 
 Write a script that ingests, cleans, and structures live or historical tick data via a broker API.
 
 Implement a simple statistical arbitrage or mean-reversion trading strategy with performance metrics.
+
+create a frontend too finally, similar to bloomberg terminal or sorts
