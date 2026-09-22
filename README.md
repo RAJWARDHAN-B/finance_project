@@ -67,11 +67,29 @@ print("Final portfolio value:", baseline["equity"].iloc[-1])
 
 The baseline assumes that the full investment is made at the first available closing price and held until the final date. It is deliberately simple: it does not model commissions, slippage, taxes, or timing decisions. Future strategies must beat this baseline after those costs, or they do not add value.
 
+## Project Status
+
+Implemented so far:
+
+- Phase 0: project scaffolding, Python package setup, virtual environment, and testing flow
+- Phase 1: OHLCV validation and ingestion
+- Phase 2: simple returns, log returns, cumulative returns, and a buy-and-hold baseline
+- Phase 3: event types and a queue-based event system for market, signal, order, and fill events
+- Phase 4: portfolio accounting with cash, positions, and equity tracking
+- Phase 5: a beginner mean-reversion strategy based on rolling z-scores
+
+What is still pending:
+
+- Connect strategy output to order generation and a full backtest loop
+- Add realistic execution costs, slippage, and position sizing
+- Phase 6: realistic backtesting with costs and execution logic
+- Phase 7+: performance analysis, research validation, and UI/dashboard work
+
 ## Phase-Wise Learning and Implementation Plan
 
 The project is intentionally developed in phases. Each phase introduces a small amount of finance and software design, produces a working result, and adds tests before the next layer is started. Do not add machine learning, live trading, or tick data until the simpler daily-data system is trustworthy.
 
-### Phase 0: Tools and Python Foundations
+### Phase 0: Tools and Python Foundations — DONE
 
 **Goal:** Become comfortable running and changing the project.
 
@@ -96,7 +114,7 @@ python -m pytest
 python -m quant_backtester.cli
 ```
 
-### Phase 1: Market Data and OHLCV
+### Phase 1: Market Data and OHLCV — DONE
 
 **Goal:** Understand what market data represents and make unreliable input safe to use.
 
@@ -120,7 +138,7 @@ Completion check:
 - Invalid input fails with a clear error.
 - A sample file can be saved under `data/` and is ignored by Git.
 
-### Phase 2: Returns and a Baseline
+### Phase 2: Returns and a Baseline — DONE
 
 **Goal:** Learn how investment performance is measured before writing a trading strategy.
 
@@ -143,7 +161,7 @@ Completion check:
 - The cumulative return agrees with the first and last prices.
 - The baseline report states the start date, end date, initial capital, final value, and total return.
 
-### Phase 3: Event-Driven Architecture
+### Phase 3: Event-Driven Architecture — DONE
 
 **Goal:** Understand how a trading system moves information through components.
 
@@ -174,7 +192,7 @@ Completion check:
 - A test processes one bar in the expected event order.
 - Components communicate through events rather than modifying one another's internal state.
 
-### Phase 4: Portfolio, Orders, and Accounting
+### Phase 4: Portfolio, Orders, and Accounting — DONE
 
 **Goal:** Make trades affect cash and positions correctly.
 
@@ -204,7 +222,7 @@ Completion check:
 
 - A fixed sequence of bars and orders produces a hand-calculable final cash balance and position.
 
-### Phase 5: First Strategy: Moving-Average Mean Reversion
+### Phase 5: First Strategy: Moving-Average Mean Reversion — DONE
 
 **Goal:** Implement a simple, explainable strategy without accidentally using future information.
 
