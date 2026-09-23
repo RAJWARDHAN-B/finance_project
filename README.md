@@ -67,6 +67,27 @@ print("Final portfolio value:", baseline["equity"].iloc[-1])
 
 The baseline assumes that the full investment is made at the first available closing price and held until the final date. It is deliberately simple: it does not model commissions, slippage, taxes, or timing decisions. Future strategies must beat this baseline after those costs, or they do not add value.
 
+Run the first event-driven strategy backtest:
+
+```python
+from quant_backtester.backtest import run_backtest
+from quant_backtester.strategy import MeanReversionStrategy
+
+prices = load_csv("data/SPY.csv")
+result = run_backtest(
+  prices,
+  symbol="SPY",
+  strategy=MeanReversionStrategy(lookback=20, z_threshold=1.5),
+  initial_cash=10000,
+)
+
+print(result.equity_curve.tail())
+print(result.trades)
+print("Final portfolio value:", result.final_equity)
+```
+
+Signals use the current close and orders execute at the next bar's open. The result contains an equity curve, a trade ledger, and the final portfolio state.
+
 ## Project Status
 
 Implemented so far:
@@ -77,10 +98,10 @@ Implemented so far:
 - Phase 3: event types and a queue-based event system for market, signal, order, and fill events
 - Phase 4: portfolio accounting with cash, positions, and equity tracking
 - Phase 5: a beginner mean-reversion strategy based on rolling z-scores
+- Phase 5 integration: next-open event-driven backtest loop and equity curve
 
 What is still pending:
 
-- Connect strategy output to order generation and a full backtest loop
 - Add realistic execution costs, slippage, and position sizing
 - Phase 6: realistic backtesting with costs and execution logic
 - Phase 7+: performance analysis, research validation, and UI/dashboard work
