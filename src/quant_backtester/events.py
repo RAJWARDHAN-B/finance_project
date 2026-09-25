@@ -64,6 +64,7 @@ class FillEvent:
     quantity: int
     price: float
     commission: float = 0.0
+    slippage_bps: float = 0.0
 
     def __post_init__(self) -> None:
         if self.side not in SIDES:
@@ -72,14 +73,35 @@ class FillEvent:
             raise ValueError("Fill quantity must be positive")
         if self.price <= 0:
             raise ValueError("Fill price must be positive")
+        if self.commission < 0:
+            raise ValueError("Commission cannot be negative")
+        if self.slippage_bps < 0:
+            raise ValueError("Slippage cannot be negative")
+
+    @property
+    def execution_price(self) -> float:
+        """Execution price after slippage adjustment."""
+        if self.slippage_bps == 0:
+            return float(self.price)
+        slippage_fraction = self.slippage_bps / 10000.0
+        if self.side == "BUY":
+            return float(self.price * (1.0 + slippage_fraction))
+        return float(self.price * (1.0 - slippage_fraction))
+
+    @property
+    def effective_cost(self) -> float:
+        """Actual notional cost including commission for the fill."""
+        notional = self.quantity * self.execution_price
+        if self.side == "BUY":
+            return notional + self.commission
+        return notional - self.commission
 
     @property
     def cash_impact(self) -> float:
-        """Signed change in cash, including commission."""
-        notional = self.quantity * self.price
+        """Signed change in cash, including commission and slippage."""
         if self.side == "BUY":
-            return -(notional + self.commission)
-        return notional - self.commission
+            return -self.effective_cost
+        return self.effective_cost
 
 
 @dataclass

@@ -2,12 +2,12 @@
 
 A beginner-friendly Python project for learning quantitative finance through software development.
 
-The first milestone is an event-driven backtesting engine with a simple mean-reversion strategy. We will begin with historical daily data, then add realistic transaction costs, performance metrics, and tests before considering live data.
+The project is a historical daily-data event-driven backtester with a mean-reversion strategy, execution costs, risk metrics, chronological research splits, a shared-cash multi-asset engine, a CLI, and an optional local dashboard. It does not connect to a broker or process live/tick data.
 
 ## Project Layout
 
 ```text
-src/quant_backtester/  Application package
+src/quant_backtester/  Application package and dashboard
 tests/                 Automated tests
 data/                  Local market data (ignored by Git)
 reports/               Generated charts and reports (ignored by Git)
@@ -30,11 +30,19 @@ Run the test suite:
 python -m pytest
 ```
 
-Run the placeholder command-line entry point:
+Install the optional dashboard dependency when you want the web interface:
 
 ```bash
-python -m quant_backtester.cli
+python -m pip install -e '.[dev,dashboard]'
 ```
+
+Start the local dashboard:
+
+```bash
+streamlit run src/quant_backtester/dashboard.py
+```
+
+The dashboard accepts a local CSV, an uploaded CSV, or daily Yahoo Finance history. It displays strategy and buy-and-hold equity curves, drawdown, metrics, fills, and unfilled quantities.
 
 Download historical daily data from Yahoo Finance:
 
@@ -50,7 +58,7 @@ prices = download_history(
 print(prices.head())
 ```
 
-The loader validates the required `Open`, `High`, `Low`, `Close`, and `Volume` columns, sorts the timestamps, rejects missing or impossible prices, and optionally saves the cleaned data.
+The loader validates the required `Open`, `High`, `Low`, `Close`, and `Volume` columns, sorts timestamps, rejects missing or impossible prices, and optionally saves the cleaned data.
 
 Calculate returns and create a buy-and-hold baseline:
 
@@ -60,7 +68,6 @@ from quant_backtester.returns import buy_and_hold
 
 prices = load_csv("data/SPY.csv")
 baseline = buy_and_hold(prices, initial_capital=10000)
-
 print(baseline[["close", "equity"]].tail())
 print("Final portfolio value:", baseline["equity"].iloc[-1])
 ```
@@ -83,10 +90,33 @@ result = run_backtest(
 
 print(result.equity_curve.tail())
 print(result.trades)
+print(result.rejections)
 print("Final portfolio value:", result.final_equity)
 ```
 
-Signals use the current close and orders execute at the next bar's open. The result contains an equity curve, a trade ledger, and the final portfolio state.
+Signals use the current close and orders execute at the next bar's open. The result contains an equity curve, a fill ledger, an unfilled-quantity/rejection ledger, and the final portfolio state. Commission is charged per fill; slippage is adverse and specified in basis points.
+
+Run a backtest from the command line and save reproducible outputs:
+
+```bash
+python -m quant_backtester.cli backtest data/SPY.csv \
+  --symbol SPY \
+  --initial-cash 10000 \
+  --commission 1.00 \
+  --slippage-bps 5 \
+  --lookback 20 \
+  --z-threshold 1.5 \
+  --output-directory reports/SPY
+```
+
+The command writes `equity_curve.csv`, `trades.csv`, `rejections.csv`, and `metrics.json`. Download validated daily history from the CLI with:
+
+```bash
+python -m quant_backtester.cli download SPY \
+  --start 2020-01-01 --end 2024-01-01 --output data/SPY.csv
+```
+
+For multi-symbol research, pass a mapping of symbol-to-OHLCV frames and symbol-to-strategy instances to `run_multi_asset_backtest` in `quant_backtester.multi_asset`. All symbols share the same cash balance; same-timestamp bars are processed in symbol order.
 
 ## Project Status
 
@@ -99,12 +129,20 @@ Implemented so far:
 - Phase 4: portfolio accounting with cash, positions, and equity tracking
 - Phase 5: a beginner mean-reversion strategy based on rolling z-scores
 - Phase 5 integration: next-open event-driven backtest loop and equity curve
+- Phase 6: configurable commission, adverse slippage, cash-aware fills, maximum share limits, and a partial-fill/rejection ledger
+- Phase 7: annualized return and volatility, Sharpe ratio, max drawdown and duration, and closed-trade win rate/PnL/profit factor
+- Phase 9 core: multi-asset event replay with shared cash and combined equity marking
+- Phase 10 dashboard: local historical research interface with benchmark, risk, trade, and rejection views
+- CLI workflows: validated Yahoo Finance download and CSV backtest report export
+- Phase 8 foundation: chronological holdout and expanding walk-forward split utilities
 
 What is still pending:
 
-- Add realistic execution costs, slippage, and position sizing
-- Phase 6: realistic backtesting with costs and execution logic
-- Phase 7+: performance analysis, research validation, and UI/dashboard work
+- Phase 8: run strategy evaluation across walk-forward folds, add parameter-sensitivity reports, and document out-of-sample experiments
+- Phase 9: configuration-file-driven multi-asset CLI runs, portfolio exposure limits, correlation/concentration analysis, and structured logging
+- Phase 10+: broker-specific live data and order APIs, tick data, market impact models, and advanced execution research
+
+The dashboard uses historical bars only. Yahoo Finance is a convenience data source, not a broker feed, and the simulated fills are not suitable for live trading.
 
 ## Phase-Wise Learning and Implementation Plan
 
@@ -132,7 +170,7 @@ Completion check:
 
 ```bash
 python -m pytest
-python -m quant_backtester.cli
+python -m quant_backtester.cli --help
 ```
 
 ### Phase 1: Market Data and OHLCV — DONE
@@ -268,7 +306,7 @@ Completion check:
 - A test proves that changing a future price does not change an earlier signal.
 - The strategy can be run through the event loop without directly changing the portfolio.
 
-### Phase 6: Realistic Backtesting
+### Phase 6: Realistic Backtesting — DONE (core)
 
 **Goal:** Make the simulated results less optimistic.
 
@@ -281,19 +319,18 @@ Learn:
 
 Build:
 
-- Commission per trade.
-- Slippage in basis points.
-- Maximum position size and available-cash checks.
-- Rejected-order reasons.
-- Complete trade and order logs.
-- Configuration objects so assumptions are visible and reproducible.
+- Commission per fill and adverse fixed-basis-point slippage.
+- Maximum share size and available-cash checks at the next open.
+- Partial-fill and rejected-quantity records with reasons.
+- Fill ledger and an execution configuration object.
+- Volume-based market impact and portfolio-level exposure sizing remain future work.
 
 Completion check:
 
 - The same strategy produces a lower or equal final value after costs.
 - Tests verify fee calculations, slippage direction, and position limits.
 
-### Phase 7: Performance and Risk Metrics
+### Phase 7: Performance and Risk Metrics — DONE (core)
 
 **Goal:** Evaluate a strategy beyond whether the final balance increased.
 
@@ -307,9 +344,9 @@ Learn:
 
 Build:
 
-- A performance report from the equity curve and trade ledger.
-- Equity curve and drawdown charts in `reports/`.
-- A comparison against buy-and-hold.
+- A performance report from the equity curve and closed-trade ledger.
+- Annualized return/volatility, Sharpe, maximum drawdown/duration, win rate, average trade PnL, and profit factor.
+- Dashboard equity and drawdown charts with a buy-and-hold equity comparison.
 - Tests using small, known equity curves with expected metrics.
 
 Completion check:
@@ -317,7 +354,7 @@ Completion check:
 - Every report includes the data period, symbol, strategy settings, costs, and metrics.
 - Results can be reproduced from the same input data and configuration.
 
-### Phase 8: Research Discipline and Validation
+### Phase 8: Research Discipline and Validation — IN PROGRESS
 
 **Goal:** Learn why a backtest can look impressive and still be wrong.
 
@@ -331,17 +368,16 @@ Learn:
 
 Build:
 
-- A fixed chronological split into development and evaluation periods.
-- Walk-forward backtesting without shuffling time series data.
-- Parameter sensitivity tables for the moving-average window and entry threshold.
-- A results table showing each run's assumptions.
+- Chronological holdout splitting and expanding walk-forward fold generation without shuffling.
+- Running and aggregating backtests across folds is still pending.
+- Parameter-sensitivity tables and an experiment-results ledger are still pending.
 
 Completion check:
 
 - The final strategy is evaluated on data that was not used to choose its parameters.
 - The README clearly reports both successful and unsuccessful experiments.
 
-### Phase 9: Multiple Assets and Better Engineering
+### Phase 9: Multiple Assets and Better Engineering — IN PROGRESS
 
 **Goal:** Extend the system while preserving correctness.
 
@@ -354,26 +390,25 @@ Learn:
 
 Build:
 
-- Multiple symbols with separate positions.
-- Portfolio-level exposure and risk limits.
-- A command-line command to run a configured backtest.
-- Structured logging and error handling.
-- Fast unit tests plus a small end-to-end test.
+- Multiple symbols with separate positions and shared cash in the Python API.
+- Per-symbol maximum share limits and a combined equity curve.
+- CLI download and single-symbol backtest/report commands.
+- Portfolio-level exposure limits, config-file-driven multi-asset CLI runs, and structured logging are still pending.
 
 Completion check:
 
 - One command creates a complete report from a configuration file.
 - Existing single-asset behavior remains unchanged.
 
-### Phase 10: Optional Advanced Extensions
+### Phase 10: Optional Advanced Extensions — DASHBOARD STARTED
 
 Only begin these after Phases 0-9 are working and understood.
 
-- Tick data and asynchronous broker APIs
+- Tick data and broker-specific asynchronous APIs
 - Limit order books and market microstructure
 - Options pricing and volatility surfaces
 - Risk metrics such as historical VaR and expected shortfall
-- A web dashboard using Streamlit
+- A local Streamlit dashboard for historical data
 - Machine-learning signals with strict time-series validation
 - A separate C++ execution or limit-order-book project
 

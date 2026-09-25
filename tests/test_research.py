@@ -1,0 +1,30 @@
+import pandas as pd
+import pytest
+
+from quant_backtester.research import chronological_split, walk_forward_splits
+
+
+def test_chronological_split_keeps_earlier_observations_in_train() -> None:
+    data = pd.DataFrame({"close": range(10)}, index=pd.date_range("2024-01-01", periods=10))
+
+    train, test = chronological_split(data, train_fraction=0.6)
+
+    assert len(train) == 6
+    assert len(test) == 4
+    assert train.index[-1] < test.index[0]
+    assert train.iloc[-1]["close"] == 5
+    assert test.iloc[0]["close"] == 6
+
+
+def test_walk_forward_splits_produce_expanding_train_and_forward_test_windows() -> None:
+    data = pd.DataFrame({"close": range(11)}, index=pd.date_range("2024-01-01", periods=11))
+
+    folds = list(walk_forward_splits(data, train_size=5, test_size=2, step_size=2))
+
+    assert [(len(train), len(test)) for train, test in folds] == [(5, 2), (7, 2), (9, 2)]
+    assert all(train.index[-1] < test.index[0] for train, test in folds)
+
+
+def test_walk_forward_splits_reject_invalid_sizes() -> None:
+    with pytest.raises(ValueError, match="train_size"):
+        list(walk_forward_splits(pd.DataFrame({"x": [1, 2]}), train_size=0, test_size=1))
