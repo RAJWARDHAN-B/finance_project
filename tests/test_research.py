@@ -1,7 +1,11 @@
 import pandas as pd
 import pytest
 
-from quant_backtester.research import chronological_split, walk_forward_splits
+from quant_backtester.research import (
+    chronological_split,
+    evaluate_walk_forward,
+    walk_forward_splits,
+)
 
 
 def test_chronological_split_keeps_earlier_observations_in_train() -> None:
@@ -28,3 +32,34 @@ def test_walk_forward_splits_produce_expanding_train_and_forward_test_windows() 
 def test_walk_forward_splits_reject_invalid_sizes() -> None:
     with pytest.raises(ValueError, match="train_size"):
         list(walk_forward_splits(pd.DataFrame({"x": [1, 2]}), train_size=0, test_size=1))
+
+
+def test_walk_forward_evaluation_reports_out_of_sample_parameter_sensitivity() -> None:
+    closes = [100.0, 100.0, 80.0, 100.0, 100.0, 100.0, 80.0, 100.0, 100.0, 100.0]
+    prices = pd.DataFrame(
+        {
+            "Open": closes,
+            "High": [value + 1.0 for value in closes],
+            "Low": [value - 1.0 for value in closes],
+            "Close": closes,
+            "Volume": [1000.0] * len(closes),
+        },
+        index=pd.date_range("2024-01-01", periods=len(closes)),
+    )
+
+    result = evaluate_walk_forward(
+        prices,
+        symbol="TEST",
+        parameter_sets=[
+            {"lookback": 3, "z_threshold": 1.0},
+            {"lookback": 4, "z_threshold": 1.5},
+        ],
+        train_size=6,
+        test_size=2,
+    )
+
+    assert len(result.folds) == 2
+    assert len(result.sensitivity) == 4
+    assert len(result.parameter_summary) == 2
+    assert result.folds.iloc[0]["test_start"] == prices.index[6]
+    assert result.sensitivity.groupby("fold")["observations"].first().tolist() == [1, 1]

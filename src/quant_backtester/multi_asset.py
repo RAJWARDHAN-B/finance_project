@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from heapq import merge
 from itertools import groupby
-from math import floor
-
 import pandas as pd
 
-from quant_backtester.backtest import BacktestResult, ExecutionConfig, _order_from_signal
+from quant_backtester.backtest import (
+    BacktestResult,
+    ExecutionConfig,
+    _order_from_signal,
+    _size_buy_order,
+)
 from quant_backtester.data import validate_ohlcv
 from quant_backtester.events import FillEvent, OrderEvent, stream_market_events
 from quant_backtester.portfolio import Portfolio
@@ -22,6 +25,8 @@ def run_multi_asset_backtest(
     commission: float = 0.0,
     slippage_bps: float = 0.0,
     max_position_size: int | None = None,
+    max_portfolio_exposure: float | None = None,
+    market_impact_bps: float = 0.0,
 ) -> BacktestResult:
     """Replay per-symbol bars in timestamp order against one shared portfolio."""
     if not prices:
@@ -33,6 +38,8 @@ def run_multi_asset_backtest(
         commission=commission,
         slippage_bps=slippage_bps,
         max_position_size=max_position_size,
+        market_impact_bps=market_impact_bps,
+        max_portfolio_exposure=max_portfolio_exposure,
     )
     portfolio = Portfolio(initial_cash=initial_cash)
     cleaned = {symbol: validate_ohlcv(frame) for symbol, frame in prices.items()}
@@ -54,20 +61,26 @@ def run_multi_asset_backtest(
             if order is not None:
                 rejection_reason = ""
                 if order.side == "BUY":
-                    execution_price = market_event.open * (1.0 + execution.slippage_bps / 10000.0)
-                    affordable = max(0, floor((portfolio.cash - execution.commission) / execution_price))
-                    quantity = min(order.quantity, affordable)
-                    if quantity < order.quantity:
-                        rejection_reason = "insufficient_cash_after_execution_costs"
-                    if execution.max_position_size is not None:
-                        available_position = max(
-                            0,
-                            execution.max_position_size - portfolio.positions.get(symbol, 0),
-                        )
-                        capped_quantity = min(quantity, available_position)
-                        if capped_quantity < quantity:
-                            rejection_reason = "max_position_size"
-                        quantity = capped_quantity
+                    marks = {**latest_prices, symbol: market_event.open}
+                    marked_equity = portfolio.total_equity(marks)
+                    current_exposure = sum(
+                        portfolio.position_value(held_symbol, price)
+                        for held_symbol, price in marks.items()
+                    )
+                    quantity, rejection_reason = _size_buy_order(
+                        order.quantity,
+                        market_event.open,
+                        market_event.volume,
+                        portfolio.cash,
+                        execution.commission,
+                        execution.slippage_bps,
+                        execution.market_impact_bps,
+                        portfolio.positions.get(symbol, 0),
+                        execution.max_position_size,
+                        execution.max_portfolio_exposure,
+                        marked_equity,
+                        current_exposure,
+                    )
                 else:
                     quantity = min(order.quantity, portfolio.positions.get(symbol, 0))
                     if quantity < order.quantity:
@@ -95,6 +108,8 @@ def run_multi_asset_backtest(
                         price=market_event.open,
                         commission=execution.commission,
                         slippage_bps=execution.slippage_bps,
+                        market_impact_bps=execution.market_impact_bps,
+                        volume=market_event.volume,
                     )
                     portfolio.update_from_fill(fill)
                     trade_rows.append(
@@ -107,6 +122,7 @@ def run_multi_asset_backtest(
                             "commission": fill.commission,
                             "execution_price": fill.execution_price,
                             "effective_cost": fill.effective_cost,
+                            "impact_bps": fill.impact_bps,
                         }
                     )
 
@@ -144,6 +160,7 @@ def run_multi_asset_backtest(
             "commission",
             "execution_price",
             "effective_cost",
+            "impact_bps",
         ],
     )
     rejections = pd.DataFrame(

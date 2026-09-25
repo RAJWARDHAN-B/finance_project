@@ -45,3 +45,20 @@ def test_multi_asset_backtest_requires_matching_strategy_symbols() -> None:
             {"AAA": build_prices(1.0)},
             strategies={"BBB": MeanReversionStrategy()},
         )
+
+
+def test_multi_asset_backtest_enforces_shared_portfolio_exposure_limit() -> None:
+    result = run_multi_asset_backtest(
+        {"AAA": build_prices(1.0), "BBB": build_prices(1.0)},
+        strategies={
+            "AAA": MeanReversionStrategy(lookback=3, z_threshold=1.0),
+            "BBB": MeanReversionStrategy(lookback=3, z_threshold=1.0),
+        },
+        initial_cash=1000.0,
+        max_portfolio_exposure=0.5,
+    )
+
+    buy_trades = result.trades.loc[result.trades["side"] == "BUY"]
+    assert len(buy_trades) == 1
+    assert buy_trades.iloc[0]["quantity"] == 5
+    assert set(result.rejections["reason"]) == {"max_portfolio_exposure"}

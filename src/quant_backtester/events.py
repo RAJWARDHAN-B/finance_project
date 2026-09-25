@@ -65,6 +65,8 @@ class FillEvent:
     price: float
     commission: float = 0.0
     slippage_bps: float = 0.0
+    market_impact_bps: float = 0.0
+    volume: Optional[float] = None
 
     def __post_init__(self) -> None:
         if self.side not in SIDES:
@@ -77,13 +79,24 @@ class FillEvent:
             raise ValueError("Commission cannot be negative")
         if self.slippage_bps < 0:
             raise ValueError("Slippage cannot be negative")
+        if self.market_impact_bps < 0:
+            raise ValueError("Market impact cannot be negative")
+        if self.volume is not None and self.volume < 0:
+            raise ValueError("Volume cannot be negative")
+
+    @property
+    def impact_bps(self) -> float:
+        """Return impact scaled by this order's share of the bar volume."""
+        if self.volume is None or self.volume == 0:
+            return 0.0
+        return float(self.market_impact_bps * self.quantity / self.volume)
 
     @property
     def execution_price(self) -> float:
         """Execution price after slippage adjustment."""
-        if self.slippage_bps == 0:
+        if self.slippage_bps == 0 and self.impact_bps == 0:
             return float(self.price)
-        slippage_fraction = self.slippage_bps / 10000.0
+        slippage_fraction = (self.slippage_bps + self.impact_bps) / 10000.0
         if self.side == "BUY":
             return float(self.price * (1.0 + slippage_fraction))
         return float(self.price * (1.0 - slippage_fraction))

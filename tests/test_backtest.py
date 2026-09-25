@@ -88,3 +88,52 @@ def test_backtest_records_order_rejected_after_next_open_price_gap() -> None:
     assert result.trades.iloc[0]["quantity"] == 1
     assert result.rejections.iloc[0]["reason"] == "insufficient_cash_after_execution_costs"
     assert result.rejections.iloc[0]["rejected_quantity"] == 11
+
+
+def test_backtest_caps_buy_at_maximum_portfolio_exposure() -> None:
+    prices = pd.DataFrame(
+        {
+            "Open": [100.0, 100.0, 80.0, 100.0],
+            "High": [101.0, 101.0, 100.0, 101.0],
+            "Low": [99.0, 99.0, 79.0, 99.0],
+            "Close": [100.0, 100.0, 80.0, 100.0],
+            "Volume": [1000.0] * 4,
+        },
+        index=pd.date_range("2024-01-01", periods=4),
+    )
+
+    result = run_backtest(
+        prices,
+        symbol="TEST",
+        strategy=MeanReversionStrategy(lookback=3, z_threshold=1.0),
+        initial_cash=1000.0,
+        max_portfolio_exposure=0.5,
+    )
+
+    assert result.trades.iloc[0]["quantity"] == 5
+    assert result.rejections.iloc[0]["reason"] == "max_portfolio_exposure"
+    assert result.final_equity == pytest.approx(1000.0)
+
+
+def test_backtest_volume_impact_increases_fill_cost_at_lower_volume() -> None:
+    prices = pd.DataFrame(
+        {
+            "Open": [100.0, 100.0, 80.0, 100.0],
+            "High": [101.0, 101.0, 100.0, 101.0],
+            "Low": [99.0, 99.0, 79.0, 99.0],
+            "Close": [100.0, 100.0, 80.0, 100.0],
+            "Volume": [1000.0, 1000.0, 1000.0, 10.0],
+        },
+        index=pd.date_range("2024-01-01", periods=4),
+    )
+
+    result = run_backtest(
+        prices,
+        symbol="TEST",
+        strategy=MeanReversionStrategy(lookback=3, z_threshold=1.0),
+        initial_cash=1000.0,
+        market_impact_bps=100.0,
+    )
+
+    assert result.trades.iloc[0]["impact_bps"] > 0.0
+    assert result.trades.iloc[0]["execution_price"] > 100.0

@@ -96,6 +96,8 @@ print("Final portfolio value:", result.final_equity)
 
 Signals use the current close and orders execute at the next bar's open. The result contains an equity curve, a fill ledger, an unfilled-quantity/rejection ledger, and the final portfolio state. Commission is charged per fill; slippage is adverse and specified in basis points.
 
+Both backtest runners accept `max_portfolio_exposure` as a fraction of marked equity and `market_impact_bps` as the impact assumed at 100% of the execution bar's volume. Modeled impact scales linearly with order quantity divided by that bar's volume. This is a simple research assumption, not a calibrated execution model; zero-volume bars add no impact.
+
 Run a backtest from the command line and save reproducible outputs:
 
 ```bash
@@ -118,6 +120,34 @@ python -m quant_backtester.cli download SPY \
 
 For multi-symbol research, pass a mapping of symbol-to-OHLCV frames and symbol-to-strategy instances to `run_multi_asset_backtest` in `quant_backtester.multi_asset`. All symbols share the same cash balance; same-timestamp bars are processed in symbol order.
 
+Run expanding walk-forward parameter selection and out-of-sample sensitivity reporting:
+
+```python
+from quant_backtester.research import evaluate_walk_forward
+
+report = evaluate_walk_forward(
+  prices,
+  symbol="SPY",
+  parameter_sets=[
+    {"lookback": 10, "z_threshold": 1.0},
+    {"lookback": 20, "z_threshold": 1.5},
+    {"lookback": 30, "z_threshold": 2.0},
+  ],
+  train_size=756,
+  test_size=126,
+  step_size=126,
+  selection_metric="sharpe_ratio",
+  max_portfolio_exposure=0.8,
+  market_impact_bps=10,
+)
+
+print(report.folds)
+print(report.sensitivity)
+print(report.parameter_summary)
+```
+
+Each fold selects the highest training-window value of `selection_metric`; the sensitivity table evaluates every parameter set on each held-out window. Training bars warm up the signal calculation but do not enter test-window equity or trade results. The summary aggregates test returns, Sharpe ratios, drawdowns, and selection frequency by parameter set.
+
 ## Project Status
 
 Implemented so far:
@@ -129,18 +159,17 @@ Implemented so far:
 - Phase 4: portfolio accounting with cash, positions, and equity tracking
 - Phase 5: a beginner mean-reversion strategy based on rolling z-scores
 - Phase 5 integration: next-open event-driven backtest loop and equity curve
-- Phase 6: configurable commission, adverse slippage, cash-aware fills, maximum share limits, and a partial-fill/rejection ledger
+- Phase 6: configurable commission, adverse slippage, volume-based impact, cash-aware fills, share and portfolio exposure limits, and a partial-fill/rejection ledger
 - Phase 7: annualized return and volatility, Sharpe ratio, max drawdown and duration, and closed-trade win rate/PnL/profit factor
 - Phase 9 core: multi-asset event replay with shared cash and combined equity marking
 - Phase 10 dashboard: local historical research interface with benchmark, risk, trade, and rejection views
 - CLI workflows: validated Yahoo Finance download and CSV backtest report export
-- Phase 8 foundation: chronological holdout and expanding walk-forward split utilities
+- Phase 8: chronological holdout, expanding walk-forward splits, training-window parameter selection, out-of-sample fold evaluation, and parameter-sensitivity summaries
 
 What is still pending:
 
-- Phase 8: run strategy evaluation across walk-forward folds, add parameter-sensitivity reports, and document out-of-sample experiments
-- Phase 9: configuration-file-driven multi-asset CLI runs, portfolio exposure limits, correlation/concentration analysis, and structured logging
-- Phase 10+: broker-specific live data and order APIs, tick data, market impact models, and advanced execution research
+- Phase 9: configuration-file-driven multi-asset CLI runs, correlation/concentration analysis, and structured logging
+- Phase 10+: a broker-specific live-data/order connection, tick data, and advanced execution research. A provider and credentials are required; Yahoo Finance currently supplies historical daily bars only.
 
 The dashboard uses historical bars only. Yahoo Finance is a convenience data source, not a broker feed, and the simulated fills are not suitable for live trading.
 
@@ -323,7 +352,7 @@ Build:
 - Maximum share size and available-cash checks at the next open.
 - Partial-fill and rejected-quantity records with reasons.
 - Fill ledger and an execution configuration object.
-- Volume-based market impact and portfolio-level exposure sizing remain future work.
+- Volume-based impact is modeled as a configurable linear function of order participation in the execution bar; portfolio-level gross exposure caps can constrain buys.
 
 Completion check:
 
@@ -369,8 +398,8 @@ Learn:
 Build:
 
 - Chronological holdout splitting and expanding walk-forward fold generation without shuffling.
-- Running and aggregating backtests across folds is still pending.
-- Parameter-sensitivity tables and an experiment-results ledger are still pending.
+- Training-window parameter selection, out-of-sample evaluation, and per-parameter fold and aggregate reports are implemented in the Python API.
+- A persistent experiment-results ledger remains future work.
 
 Completion check:
 
@@ -393,7 +422,7 @@ Build:
 - Multiple symbols with separate positions and shared cash in the Python API.
 - Per-symbol maximum share limits and a combined equity curve.
 - CLI download and single-symbol backtest/report commands.
-- Portfolio-level exposure limits, config-file-driven multi-asset CLI runs, and structured logging are still pending.
+- Config-file-driven multi-asset CLI runs, correlation/concentration analysis, and structured logging are still pending.
 
 Completion check:
 

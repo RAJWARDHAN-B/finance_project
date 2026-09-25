@@ -20,6 +20,8 @@ class ExecutionConfig:
     commission: float = 0.0
     slippage_bps: float = 0.0
     max_position_size: int | None = None
+    market_impact_bps: float = 0.0
+    max_portfolio_exposure: float | None = None
 
     def __post_init__(self) -> None:
         if self.commission < 0:
@@ -28,6 +30,10 @@ class ExecutionConfig:
             raise ValueError("Slippage basis points cannot be negative")
         if self.max_position_size is not None and self.max_position_size <= 0:
             raise ValueError("Max position size must be positive when provided")
+        if self.market_impact_bps < 0:
+            raise ValueError("Market impact basis points cannot be negative")
+        if self.max_portfolio_exposure is not None and not 0.0 <= self.max_portfolio_exposure <= 1.0:
+            raise ValueError("Max portfolio exposure must be between 0 and 1")
 
 
 @dataclass
@@ -57,6 +63,52 @@ def _order_from_signal(signal: SignalEvent, portfolio: Portfolio, price: float) 
     return None
 
 
+def _size_buy_order(
+    requested_quantity: int,
+    market_price: float,
+    volume: float,
+    cash: float,
+    commission: float,
+    slippage_bps: float,
+    market_impact_bps: float,
+    current_position: int,
+    max_position_size: int | None,
+    max_portfolio_exposure: float | None,
+    current_equity: float,
+    current_exposure: float,
+) -> tuple[int, str]:
+    """Apply cash, share, and projected gross-exposure limits to a buy."""
+    def affordable(quantity: int) -> bool:
+        impact = market_impact_bps * quantity / volume if volume > 0 else 0.0
+        execution_price = market_price * (1.0 + (slippage_bps + impact) / 10000.0)
+        return quantity * execution_price + commission <= cash
+
+    low, high = 0, requested_quantity
+    while low < high:
+        midpoint = (low + high + 1) // 2
+        if affordable(midpoint):
+            low = midpoint
+        else:
+            high = midpoint - 1
+    quantity = low
+    reason = "insufficient_cash_after_execution_costs" if quantity < requested_quantity else ""
+
+    if max_position_size is not None:
+        capped_quantity = min(quantity, max(0, max_position_size - current_position))
+        if capped_quantity < quantity:
+            quantity = capped_quantity
+            reason = "max_position_size"
+
+    if max_portfolio_exposure is not None:
+        exposure_budget = max(0.0, current_equity * max_portfolio_exposure - current_exposure)
+        exposure_quantity = floor(exposure_budget / market_price)
+        if exposure_quantity < quantity:
+            quantity = exposure_quantity
+            reason = "max_portfolio_exposure"
+
+    return quantity, reason
+
+
 def run_backtest(
     prices: pd.DataFrame,
     symbol: str,
@@ -65,16 +117,24 @@ def run_backtest(
     commission: float = 0.0,
     slippage_bps: float = 0.0,
     max_position_size: int | None = None,
+    max_portfolio_exposure: float | None = None,
+    market_impact_bps: float = 0.0,
+    warmup_prices: pd.DataFrame | None = None,
 ) -> BacktestResult:
     """Replay bars, execute signals on the following bar's open, and track equity."""
     execution = ExecutionConfig(
         commission=commission,
         slippage_bps=slippage_bps,
         max_position_size=max_position_size,
+        market_impact_bps=market_impact_bps,
+        max_portfolio_exposure=max_portfolio_exposure,
     )
     cleaned = validate_ohlcv(prices)
+    warmup = validate_ohlcv(warmup_prices) if warmup_prices is not None else None
+    if warmup is not None and len(warmup) and warmup.index[-1] >= cleaned.index[0]:
+        raise ValueError("Warm-up data must end before test data begins")
     portfolio = Portfolio(initial_cash=initial_cash)
-    close_history = pd.Series(dtype=float)
+    close_history = warmup["Close"].copy() if warmup is not None else pd.Series(dtype=float)
     pending_order: OrderEvent | None = None
     equity_rows: list[dict[str, object]] = []
     trade_rows: list[dict[str, object]] = []
@@ -84,16 +144,22 @@ def run_backtest(
         if pending_order is not None:
             rejection_reason = ""
             if pending_order.side == "BUY":
-                execution_price = market_event.open * (1.0 + (execution.slippage_bps / 10000.0))
-                affordable_quantity = max(0, floor((portfolio.cash - execution.commission) / execution_price))
-                quantity = min(pending_order.quantity, affordable_quantity)
-                if quantity < pending_order.quantity:
-                    rejection_reason = "insufficient_cash_after_execution_costs"
-                if execution.max_position_size is not None:
-                    capped_quantity = min(quantity, execution.max_position_size)
-                    if capped_quantity < quantity:
-                        rejection_reason = "max_position_size"
-                    quantity = capped_quantity
+                marked_equity = portfolio.total_equity({symbol: market_event.open})
+                current_exposure = portfolio.position_value(symbol, market_event.open)
+                quantity, rejection_reason = _size_buy_order(
+                    pending_order.quantity,
+                    market_event.open,
+                    market_event.volume,
+                    portfolio.cash,
+                    execution.commission,
+                    execution.slippage_bps,
+                    execution.market_impact_bps,
+                    portfolio.positions.get(symbol, 0),
+                    execution.max_position_size,
+                    execution.max_portfolio_exposure,
+                    marked_equity,
+                    current_exposure,
+                )
             else:
                 quantity = min(
                     pending_order.quantity,
@@ -124,6 +190,8 @@ def run_backtest(
                     price=market_event.open,
                     commission=execution.commission,
                     slippage_bps=execution.slippage_bps,
+                    market_impact_bps=execution.market_impact_bps,
+                    volume=market_event.volume,
                 )
                 portfolio.update_from_fill(fill)
                 trade_rows.append(
@@ -136,6 +204,7 @@ def run_backtest(
                         "commission": fill.commission,
                         "execution_price": fill.execution_price,
                         "effective_cost": fill.effective_cost,
+                        "impact_bps": fill.impact_bps,
                     }
                 )
             pending_order = None
@@ -171,6 +240,7 @@ def run_backtest(
             "commission",
             "execution_price",
             "effective_cost",
+            "impact_bps",
         ],
     )
     rejections = pd.DataFrame(

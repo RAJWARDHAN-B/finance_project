@@ -59,6 +59,18 @@ def test_fill_cash_impact_signs_and_commission() -> None:
     assert sell.cash_impact == pytest.approx(999.0)
 
 
+def test_fill_market_impact_scales_with_volume_participation() -> None:
+    timestamp = pd.Timestamp("2024-01-01")
+
+    liquid = FillEvent(timestamp, "TEST", "BUY", 10, 100.0, market_impact_bps=100.0, volume=1000.0)
+    illiquid = FillEvent(timestamp, "TEST", "BUY", 10, 100.0, market_impact_bps=100.0, volume=100.0)
+
+    assert liquid.impact_bps == pytest.approx(1.0)
+    assert liquid.execution_price == pytest.approx(100.01)
+    assert illiquid.impact_bps == pytest.approx(10.0)
+    assert illiquid.execution_price == pytest.approx(100.10)
+
+
 def test_events_reject_invalid_values() -> None:
     timestamp = pd.Timestamp("2024-01-01")
 
